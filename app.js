@@ -16,15 +16,76 @@ function normalizeSupabaseUrl(raw) {
   return u;
 }
 
-const supabaseUrl = normalizeSupabaseUrl(String(import.meta.env.VITE_SUPABASE_URL ?? ""));
+const supabaseRemoteUrl = normalizeSupabaseUrl(String(import.meta.env.VITE_SUPABASE_URL ?? ""));
 const supabaseAnonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY ?? "").trim();
-const useSupabase = Boolean(supabaseUrl && supabaseAnonKey);
+const useSupabase = Boolean(supabaseRemoteUrl && supabaseAnonKey);
+
+/**
+ * Chave de sessão estável: o SDK usa `sb-${hostname.split(".")[0]}-auth-token`.
+ * Com proxy (hostname localhost) isso virava `sb-localhost-auth-token` para todos os projetos → sessões misturadas e JSON inválido.
+ */
+function supabaseAuthStorageKeyFromRemoteUrl(url) {
+  try {
+    const u = new URL(url);
+    const ref = u.hostname.split(".")[0];
+    return ref ? `sb-${ref}-auth-token` : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const supabaseAuthStorageKey = supabaseAuthStorageKeyFromRemoteUrl(supabaseRemoteUrl);
+
+/** Em dev, pedidos vão para /__supabase (proxy no Vite) para evitar bloqueios ao domínio *.supabase.co. */
+function resolveSupabaseClientUrl() {
+  if (!import.meta.env.DEV || !supabaseRemoteUrl) return supabaseRemoteUrl;
+  const origin =
+    typeof globalThis !== "undefined" && globalThis.location?.origin
+      ? String(globalThis.location.origin)
+      : "";
+  if (!origin) return supabaseRemoteUrl;
+  return `${origin}/__supabase`;
+}
+
+const supabaseUrl = resolveSupabaseClientUrl();
+
+/**
+ * Evita `response.json()` em corpo vazio (Unexpected end of JSON input) no auth-js.
+ * @param {RequestInfo | URL} input
+ * @param {RequestInit} [init]
+ */
+async function supabaseFetch(input, init) {
+  const res = await fetch(input, init);
+  const ct = (res.headers.get("content-type") || "").toLowerCase();
+  if (!ct.includes("application/json")) {
+    return res;
+  }
+  const text = await res.text();
+  if (text.trim() === "") {
+    return new Response("{}", {
+      status: res.status,
+      statusText: res.statusText,
+      headers: res.headers,
+    });
+  }
+  return new Response(text, {
+    status: res.status,
+    statusText: res.statusText,
+    headers: res.headers,
+  });
+}
 
 /** @type {import("@supabase/supabase-js").SupabaseClient | null} */
 let supabase = null;
 if (useSupabase) {
   supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      ...(supabaseAuthStorageKey ? { storageKey: supabaseAuthStorageKey } : {}),
+    },
+    global: { fetch: supabaseFetch },
   });
 }
 
@@ -1202,7 +1263,7 @@ async function handleAuthEvent(_event, session) {
 }
 
 const MSG_FETCH_FAIL =
-  "O navegador não conseguiu ligar ao Supabase (Failed to fetch). Confira: (1) VITE_SUPABASE_URL no .env.local igual a Settings → API → Project URL; (2) abra o site com npm run dev em http://localhost:5173 — não use file://; (3) desative bloqueadores de anúncios/rastreio nesta página; (4) no painel Supabase, veja se o projeto não está pausado.";
+  "O navegador não conseguiu ligar ao Supabase (Failed to fetch). Em desenvolvimento o site usa um túnel em localhost — pare e volte a correr npm run dev após alterar .env.local. Confira também: URL = Settings → API → Project URL; não abra o HTML em file://; desative bloqueadores nesta página; no painel Supabase confirme que o projeto não está pausado.";
 
 function mapAuthError(err) {
   const msg = String(err?.message ?? err ?? "");
@@ -1266,6 +1327,15 @@ function wireAuth() {
   });
 }
 
+function clearStaleSupabaseAuthKeys() {
+  try {
+    if (typeof localStorage === "undefined" || !supabaseAuthStorageKey) return;
+    localStorage.removeItem("sb-localhost-auth-token");
+  } catch {
+    /* ignore */
+  }
+}
+
 async function init() {
   wire();
   wireAuth();
@@ -1288,25 +1358,45 @@ async function init() {
   const cfgErr = document.getElementById("auth-config-error");
   if (cfgErr) cfgErr.hidden = true;
 
+  clearStaleSupabaseAuthKeys();
+
   showAuthGate();
 
+  /** @type {import("@supabase/supabase-js").Session | null} */
+  let initialSession = null;
   try {
-    const health = await fetch(`${supabaseUrl}/auth/v1/health`, { method: "GET" });
-    if (!health.ok) {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      console.error("getSession", error);
       if (cfgErr) {
         cfgErr.hidden = false;
-        cfgErr.textContent = `O Supabase respondeu HTTP ${health.status}. Confira VITE_SUPABASE_URL (Project URL) e a chave anon.`;
+        cfgErr.textContent = `Sessão: ${error.message}. Se persistir, em localhost limpe o armazenamento do site (DevTools → Application → Local storage → apague chaves que começam com sb-) e recarregue.`;
       }
+    } else {
+      initialSession = data.session ?? null;
     }
-  } catch {
+  } catch (err) {
+    console.error("getSession", err);
+    const msg = String(err?.message ?? err ?? "");
+    const looksLikeBadJson =
+      msg.includes("JSON") || msg.includes("Unexpected end") || msg.includes("Unexpected token");
     if (cfgErr) {
       cfgErr.hidden = false;
-      cfgErr.textContent = MSG_FETCH_FAIL;
+      cfgErr.textContent = looksLikeBadJson
+        ? "Sessão guardada inválida. Removemos dados de auth locais; recarregue a página (F5) e entre de novo."
+        : "Não foi possível obter a sessão. Recarregue ou verifique a rede / URL do Supabase.";
+    }
+    if (looksLikeBadJson) {
+      try {
+        const keys = Object.keys(localStorage).filter((k) => k.startsWith("sb-") && k.includes("auth"));
+        keys.forEach((k) => localStorage.removeItem(k));
+      } catch {
+        /* ignore */
+      }
     }
   }
 
-  const { data } = await supabase.auth.getSession();
-  await handleAuthEvent("INITIAL_CHECK", data.session);
+  await handleAuthEvent("INITIAL_CHECK", initialSession);
 }
 
 function normalizeCalDraft(draft) {
