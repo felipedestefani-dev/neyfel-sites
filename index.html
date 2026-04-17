@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="FD Investimentos — Monte seu PC, financeiro e calendário no navegador." />
+    <meta name="theme-color" content="#fafaf9" />
+    <title>FD Investimentos</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body id="topo">
+    <a class="skip-link" href="#conteudo-principal">Ir para o conteúdo</a>
+
+    <header class="topbar">
+      <div class="topbar__inner">
+        <span class="topbar__brand-name">FD Investimentos</span>
+        <nav class="tabs" role="tablist" aria-label="Seções">
+          <button type="button" class="tabs__btn is-active" id="tab-app-pc" role="tab" aria-selected="true" aria-controls="panel-pc">
+            Monte seu PC
+          </button>
+          <button type="button" class="tabs__btn" id="tab-app-fin" role="tab" aria-selected="false" aria-controls="panel-fin">
+            Financeiro
+          </button>
+          <button type="button" class="tabs__btn" id="tab-app-cal" role="tab" aria-selected="false" aria-controls="panel-cal">
+            Calendário
+          </button>
+        </nav>
+      </div>
+    </header>
+
+    <div class="app" id="conteudo-principal" tabindex="-1">
+      <div class="toast" id="toast" hidden></div>
+
+      <div id="panel-pc" class="tab-panel" role="tabpanel" aria-labelledby="tab-app-pc">
+      <main class="main">
+
+        <section class="intro" id="inicio">
+          <h2>Organize seu orçamento</h2>
+          <p class="muted">
+            Anote peças, compare preços entre lojas e guarde o link do anúncio. Com link do
+            <strong>Mercado Livre</strong> (ou ID <span class="mono">MLB…</span>), dá para buscar o preço atual pela API
+            e ir atualizando na agenda.
+          </p>
+          <p class="intro__actions">
+            <a class="btn btn--primary" href="#novo">Adicionar peça</a>
+            <a class="btn btn--ghost" href="#agenda">Ver agenda</a>
+          </p>
+          <p class="tiny muted">Sem compra pelo site — é só uma agenda.</p>
+        </section>
+
+        <section class="totals" aria-label="Resumo rápido">
+          <div class="total">
+            <div class="total__label">Total estimado</div>
+            <div class="total__value total__value--green" id="sum-total">R$&nbsp;0,00</div>
+          </div>
+          <div class="total">
+            <div class="total__label">Peças</div>
+            <div class="total__value total__value--cyan" id="sum-count">0</div>
+          </div>
+          <div class="total">
+            <div class="total__label">Lojas</div>
+            <div class="total__value total__value--yellow" id="sum-stores">0</div>
+          </div>
+        </section>
+
+        <section class="card" id="novo">
+          <header class="section-head">
+            <div>
+              <h2>Novo lançamento</h2>
+              <p class="muted">Preencha o que você pesquisou (ou pretende comprar).</p>
+            </div>
+          </header>
+
+          <form id="form" class="form" novalidate>
+            <div class="grid2">
+              <label class="field">
+                <span>Categoria</span>
+                <select id="f-category">
+                  <option value="processador">Processador</option>
+                  <option value="placa_mae">Placa-mãe</option>
+                  <option value="memoria">Memória RAM</option>
+                  <option value="armazenamento">Armazenamento</option>
+                  <option value="gpu">Placa de vídeo</option>
+                  <option value="fonte">Fonte</option>
+                  <option value="gabinete">Gabinete</option>
+                  <option value="cooler">Cooler</option>
+                  <option value="monitor">Monitor</option>
+                  <option value="periferico">Periférico</option>
+                  <option value="outros">Outros</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Status</span>
+                <select id="f-status">
+                  <option value="pesquisa" selected>Pesquisa</option>
+                  <option value="carrinho">No carrinho</option>
+                  <option value="comprado">Comprado</option>
+                </select>
+              </label>
+
+              <label class="field field--full">
+                <span>Nome da peça</span>
+                <input id="f-name" type="text" placeholder="Ex.: Ryzen 5 5600" autocomplete="off" />
+              </label>
+
+              <label class="field">
+                <span>Loja</span>
+                <input id="f-store" type="text" placeholder="Ex.: Kabum, Pichau, Amazon…" autocomplete="off" />
+              </label>
+
+              <label class="field">
+                <span>Preço (R$)</span>
+                <input id="f-price" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off" />
+              </label>
+
+              <label class="field field--full">
+                <span>Link (opcional)</span>
+                <input id="f-url" type="url" placeholder="https://..." autocomplete="off" />
+              </label>
+
+              <p class="tiny muted" id="ml-hint"></p>
+
+              <label class="field field--full">
+                <span>ID Mercado Livre (opcional)</span>
+                <input id="f-ml-id" type="text" placeholder="Ex.: MLB1234567890 (também detectamos no link)" autocomplete="off" />
+              </label>
+
+              <label class="field field--full field--check">
+                <input id="f-live" type="checkbox" checked />
+                <span>Sincronizar preço pelo Mercado Livre (API pública)</span>
+              </label>
+
+              <label class="field field--full">
+                <span>Observações</span>
+                <input id="f-notes" type="text" placeholder="Garantia, frete, cupom, versão…" autocomplete="off" />
+              </label>
+            </div>
+
+            <div class="actions">
+              <button class="btn btn--primary" id="btn-save" type="submit">Salvar na agenda</button>
+              <button class="btn btn--ghost" id="btn-cancel" type="button" hidden>Cancelar edição</button>
+              <button class="btn btn--danger" id="btn-clear" type="button">Limpar tudo</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="card" id="agenda">
+          <header class="section-head">
+            <div>
+              <h2>Agenda</h2>
+              <p class="muted">Busque por nome, loja ou observação.</p>
+            </div>
+            <div class="tools">
+              <input id="search" class="search" type="search" placeholder="Buscar..." autocomplete="off" />
+              <select id="filter-cat">
+                <option value="todos" selected>Todas categorias</option>
+                <option value="processador">Processador</option>
+                <option value="placa_mae">Placa-mãe</option>
+                <option value="memoria">Memória RAM</option>
+                <option value="armazenamento">Armazenamento</option>
+                <option value="gpu">Placa de vídeo</option>
+                <option value="fonte">Fonte</option>
+                <option value="gabinete">Gabinete</option>
+                <option value="cooler">Cooler</option>
+                <option value="monitor">Monitor</option>
+                <option value="periferico">Periférico</option>
+                <option value="outros">Outros</option>
+              </select>
+              <select id="filter-status">
+                <option value="todos" selected>Todos status</option>
+                <option value="pesquisa">Pesquisa</option>
+                <option value="carrinho">No carrinho</option>
+                <option value="comprado">Comprado</option>
+              </select>
+              <button class="btn btn--ghost" id="btn-refresh-ml" type="button">Atualizar ML agora</button>
+              <select id="live-interval" title="Atualização automática (somente itens com ML)">
+                <option value="0" selected>Auto ML: desligado</option>
+                <option value="3">Auto ML: 3 min</option>
+                <option value="5">Auto ML: 5 min</option>
+                <option value="10">Auto ML: 10 min</option>
+                <option value="15">Auto ML: 15 min</option>
+              </select>
+              <input
+                id="price-proxy"
+                class="search search--proxy"
+                type="text"
+                placeholder="Proxy ML opcional: http://127.0.0.1:3333"
+                autocomplete="off"
+              />
+            </div>
+          </header>
+
+          <div id="empty" class="empty"><p id="empty-text">Nenhuma peça ainda. Comece em “Novo lançamento”.</p></div>
+          <ul id="list" class="rows" aria-label="Peças"></ul>
+        </section>
+
+      </main>
+      </div>
+
+      <div id="panel-fin" class="tab-panel" role="tabpanel" aria-labelledby="tab-app-fin" hidden>
+        <main class="main">
+          <section class="intro" id="fin-inicio">
+            <h2>Financeiro</h2>
+            <p class="muted">
+              Lançamentos de <strong>ganhos</strong>, <strong>despesas</strong>, <strong>gastos</strong> e
+              <strong>investimentos</strong>.
+            </p>
+            <p class="intro__actions">
+              <a class="btn btn--primary" href="#fin-novo">Novo lançamento</a>
+              <a class="btn btn--ghost" href="#fin-lista">Ver lançamentos</a>
+            </p>
+          </section>
+
+          <section class="totals totals--fin" aria-label="Resumo financeiro">
+            <div class="total">
+              <div class="total__label">Ganhos</div>
+              <div class="total__value total__value--green" id="fin-sum-ganho">R$&nbsp;0,00</div>
+            </div>
+            <div class="total">
+              <div class="total__label">Despesas</div>
+              <div class="total__value total__value--yellow" id="fin-sum-despesa">R$&nbsp;0,00</div>
+            </div>
+            <div class="total">
+              <div class="total__label">Gastos</div>
+              <div class="total__value total__value--cyan" id="fin-sum-gasto">R$&nbsp;0,00</div>
+            </div>
+            <div class="total">
+              <div class="total__label">Investimentos</div>
+              <div class="total__value total__value--yellow" id="fin-sum-invest">R$&nbsp;0,00</div>
+            </div>
+            <div class="total">
+              <div class="total__label">Saldo (ganhos − saídas)</div>
+              <div class="total__value total__value--green" id="fin-sum-saldo">R$&nbsp;0,00</div>
+            </div>
+          </section>
+
+          <section class="card" id="fin-novo">
+            <header class="section-head">
+              <div>
+                <h2>Novo lançamento</h2>
+                <p class="muted">Registre valores em reais. Use notas para lembrar o contexto.</p>
+              </div>
+            </header>
+
+            <form id="fin-form" class="form" novalidate>
+              <div class="grid2">
+                <label class="field">
+                  <span>Tipo</span>
+                  <select id="fin-f-type">
+                    <option value="ganho">Ganhos</option>
+                    <option value="despesa">Despesas</option>
+                    <option value="gasto">Gastos</option>
+                    <option value="investimento">Investimentos</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Data</span>
+                  <input id="fin-f-date" type="date" autocomplete="off" />
+                </label>
+                <label class="field field--full">
+                  <span>Descrição</span>
+                  <input id="fin-f-desc" type="text" placeholder="Ex.: Salário, aluguel, supermercado, aporte Tesouro…" autocomplete="off" />
+                </label>
+                <label class="field field--full">
+                  <span>Valor (R$)</span>
+                  <input id="fin-f-amount" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off" />
+                </label>
+                <label class="field field--full">
+                  <span>Observações (opcional)</span>
+                  <input id="fin-f-notes" type="text" placeholder="Conta, parcela, categoria extra…" autocomplete="off" />
+                </label>
+              </div>
+              <div class="actions">
+                <button class="btn btn--primary" id="fin-btn-save" type="submit">Salvar</button>
+                <button class="btn btn--ghost" id="fin-btn-cancel" type="button" hidden>Cancelar edição</button>
+                <button class="btn btn--danger" id="fin-btn-clear" type="button">Limpar tudo</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="card" id="fin-lista">
+            <header class="section-head">
+              <div>
+                <h2>Lançamentos</h2>
+                <p class="muted">Filtre por tipo ou busque na descrição.</p>
+              </div>
+              <div class="tools">
+                <input id="fin-search" class="search" type="search" placeholder="Buscar…" autocomplete="off" />
+                <select id="fin-filter-type">
+                  <option value="todos" selected>Todos os tipos</option>
+                  <option value="ganho">Ganhos</option>
+                  <option value="despesa">Despesas</option>
+                  <option value="gasto">Gastos</option>
+                  <option value="investimento">Investimentos</option>
+                </select>
+              </div>
+            </header>
+            <div id="fin-empty" class="empty"><p id="fin-empty-text">Nenhum lançamento ainda.</p></div>
+            <ul id="fin-list" class="rows" aria-label="Lançamentos financeiros"></ul>
+          </section>
+        </main>
+      </div>
+
+      <div id="panel-cal" class="tab-panel" role="tabpanel" aria-labelledby="tab-app-cal" hidden>
+        <main class="main">
+          <section class="intro" id="cal-inicio">
+            <h2>Calendário</h2>
+            <p class="muted">
+              A grade segue o mês atual (domingo a sábado, como no Etec Informa). Clique em um dia para ver eventos; a
+              faixa abaixo da grade muda a data. Os dados ficam salvos neste navegador.
+            </p>
+            <p class="intro__actions">
+              <a class="btn btn--primary" href="#cal-mes">Ver mês</a>
+              <a class="btn btn--ghost" href="#cal-novo">Novo evento</a>
+            </p>
+          </section>
+
+          <section class="card card--calendar" id="cal-mes">
+            <div class="calendar-view">
+              <div class="calendar-nav">
+                <button type="button" class="calendar-nav__btn" id="cal-prev" aria-label="Mês anterior">‹</button>
+                <span class="calendar-nav__title mono" id="cal-month-label">—</span>
+                <button type="button" class="calendar-nav__btn" id="cal-next" aria-label="Próximo mês">›</button>
+              </div>
+              <div class="calendar-weekdays" role="row" aria-label="Dias da semana">
+                <span class="calendar-weekdays__cell" title="Domingo">Dom</span>
+                <span class="calendar-weekdays__cell" title="Segunda-feira">Seg</span>
+                <span class="calendar-weekdays__cell" title="Terça-feira">Ter</span>
+                <span class="calendar-weekdays__cell" title="Quarta-feira">Qua</span>
+                <span class="calendar-weekdays__cell" title="Quinta-feira">Qui</span>
+                <span class="calendar-weekdays__cell" title="Sexta-feira">Sex</span>
+                <span class="calendar-weekdays__cell" title="Sábado">Sáb</span>
+              </div>
+              <div class="calendar-grid" id="cal-grid" data-cal-grid role="grid" aria-label="Dias do mês"></div>
+              <div class="calendar-strip">
+                <button type="button" class="calendar-strip__nav" id="cal-strip-prev" aria-label="Dia anterior">‹</button>
+                <span class="calendar-strip__wrap">
+                  <input type="date" class="calendar-strip__input" id="cal-strip-date" aria-label="Ir para data" />
+                </span>
+                <button type="button" class="calendar-strip__nav" id="cal-strip-next" aria-label="Próximo dia">›</button>
+              </div>
+              <p class="calendar-selected-label" id="cal-selected-label"></p>
+              <div class="calendar-events" id="cal-events-block">
+                <p id="cal-day-empty" class="calendar-events-empty" hidden>Nenhum evento neste dia.</p>
+                <div id="cal-day-list" class="calendar-events-list" aria-label="Eventos do dia"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card" id="cal-novo">
+            <header class="section-head">
+              <div>
+                <h2>Novo evento</h2>
+                <p class="muted">O dia vem do calendário acima (ou ajuste manualmente).</p>
+              </div>
+            </header>
+            <form id="cal-form" class="form" novalidate>
+              <div class="grid2">
+                <label class="field">
+                  <span>Data</span>
+                  <input id="cal-f-date" type="date" required autocomplete="off" />
+                </label>
+                <label class="field">
+                  <span>Horário (opcional)</span>
+                  <input id="cal-f-time" type="time" autocomplete="off" />
+                </label>
+                <label class="field field--full">
+                  <span>Título</span>
+                  <input id="cal-f-title" type="text" placeholder="Ex.: Reunião, pagamento, montar PC…" autocomplete="off" />
+                </label>
+                <label class="field field--full">
+                  <span>Observações (opcional)</span>
+                  <input id="cal-f-notes" type="text" placeholder="Detalhes, link, lembrete…" autocomplete="off" />
+                </label>
+              </div>
+              <div class="actions">
+                <button class="btn btn--primary" id="cal-btn-save" type="submit">Salvar evento</button>
+                <button class="btn btn--ghost" id="cal-btn-cancel" type="button" hidden>Cancelar edição</button>
+                <button class="btn btn--danger" id="cal-btn-clear" type="button">Limpar tudo</button>
+              </div>
+            </form>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <footer class="site-footer">
+      <p>
+        <strong>FD Investimentos</strong> · Felipe
+        <a href="https://www.instagram.com/off.destefani" target="_blank" rel="noopener">@off.destefani</a>
+      </p>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>
