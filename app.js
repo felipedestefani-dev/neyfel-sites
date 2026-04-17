@@ -1186,16 +1186,16 @@ function wireAuth() {
 
   const tabLogin = document.getElementById("auth-tab-login");
   const tabSignup = document.getElementById("auth-tab-signup");
-  const formLogin = document.getElementById("form-login");
-  const formSignup = document.getElementById("form-signup");
+  const panelLogin = document.getElementById("auth-panel-login");
+  const panelSignup = document.getElementById("auth-panel-signup");
 
   tabLogin?.addEventListener("click", () => {
     tabLogin.classList.add("is-active");
     tabSignup?.classList.remove("is-active");
     tabLogin.setAttribute("aria-selected", "true");
     tabSignup?.setAttribute("aria-selected", "false");
-    if (formLogin) formLogin.hidden = false;
-    if (formSignup) formSignup.hidden = true;
+    if (panelLogin) panelLogin.hidden = false;
+    if (panelSignup) panelSignup.hidden = true;
     setAuthMsg("");
   });
 
@@ -1204,8 +1204,8 @@ function wireAuth() {
     tabLogin?.classList.remove("is-active");
     tabSignup?.setAttribute("aria-selected", "true");
     tabLogin?.setAttribute("aria-selected", "false");
-    if (formLogin) formLogin.hidden = true;
-    if (formSignup) formSignup.hidden = false;
+    if (panelLogin) panelLogin.hidden = true;
+    if (panelSignup) panelSignup.hidden = false;
     setAuthMsg("");
   });
 
