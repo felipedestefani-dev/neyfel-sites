@@ -8,8 +8,16 @@ const FIN_STORAGE_KEY = "fin_ledger_v1";
 const CAL_STORAGE_KEY = "cal_events_v1";
 const CAL_VIEW_KEY = "cal_view_ym_v1";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+/** @param {string} raw */
+function normalizeSupabaseUrl(raw) {
+  let u = String(raw ?? "").trim().replace(/\/+$/u, "");
+  if (!u) return "";
+  if (!/^https?:\/\//iu.test(u)) u = `https://${u}`;
+  return u;
+}
+
+const supabaseUrl = normalizeSupabaseUrl(String(import.meta.env.VITE_SUPABASE_URL ?? ""));
+const supabaseAnonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY ?? "").trim();
 const useSupabase = Boolean(supabaseUrl && supabaseAnonKey);
 
 /** @type {import("@supabase/supabase-js").SupabaseClient | null} */
@@ -1067,15 +1075,16 @@ function tryMigrateLocalStorageToState() {
   return touched;
 }
 
-async function hydrateFromCloud() {
-  if (!supabase) return;
-  const { data: udata, error: uerr } = await supabase.auth.getUser();
-  if (uerr || !udata.user) return;
+/**
+ * @param {{ id: string }} user Utilizador da sessão (evita corrida com getUser() logo após o login).
+ */
+async function hydrateFromCloud(user) {
+  if (!supabase || !user?.id) return;
 
   const { data, error } = await supabase
     .from("user_data")
     .select("pc_entries, fin_entries, cal_events")
-    .eq("user_id", udata.user.id)
+    .eq("user_id", user.id)
     .maybeSingle();
 
   if (error) {
@@ -1160,7 +1169,13 @@ async function showAppAfterAuth(user) {
   const needHydrate = lastHydratedUserId !== user.id;
   if (needHydrate) {
     lastHydratedUserId = user.id;
-    await hydrateFromCloud();
+    try {
+      await hydrateFromCloud(user);
+    } catch (err) {
+      console.error(err);
+      lastHydratedUserId = null;
+      toast("Erro ao carregar dados na nuvem. Verifique a tabela user_data e a rede.");
+    }
   }
   loadLivePrefsUi();
   restartLiveTimer();
@@ -1178,68 +1193,63 @@ async function handleAuthEvent(_event, session) {
     renderCalendarUi();
     return;
   }
-  await showAppAfterAuth(session.user);
+  try {
+    await showAppAfterAuth(session.user);
+  } catch (err) {
+    console.error(err);
+    toast("Erro ao abrir a sessão. Recarregue a página e tente de novo.");
+  }
+}
+
+const MSG_FETCH_FAIL =
+  "O navegador não conseguiu ligar ao Supabase (Failed to fetch). Confira: (1) VITE_SUPABASE_URL no .env.local igual a Settings → API → Project URL; (2) abra o site com npm run dev em http://localhost:5173 — não use file://; (3) desative bloqueadores de anúncios/rastreio nesta página; (4) no painel Supabase, veja se o projeto não está pausado.";
+
+function mapAuthError(err) {
+  const msg = String(err?.message ?? err ?? "");
+  const lower = msg.toLowerCase();
+  if (
+    lower.includes("failed to fetch") ||
+    lower.includes("load failed") ||
+    lower.includes("networkerror") ||
+    lower.includes("network request failed")
+  ) {
+    return MSG_FETCH_FAIL;
+  }
+  if (lower.includes("invalid login") || lower.includes("invalid_credentials")) {
+    return "E-mail ou senha incorretos.";
+  }
+  if (lower.includes("email not confirmed")) {
+    return "Confirme o link no e-mail antes de entrar (ou desative a confirmação em Authentication → Providers no Supabase).";
+  }
+  if (lower.includes("network") || lower.includes("fetch")) {
+    return MSG_FETCH_FAIL;
+  }
+  return msg || "Não foi possível entrar.";
 }
 
 function wireAuth() {
   if (!useSupabase || !supabase) return;
 
-  const tabLogin = document.getElementById("auth-tab-login");
-  const tabSignup = document.getElementById("auth-tab-signup");
-  const panelLogin = document.getElementById("auth-panel-login");
-  const panelSignup = document.getElementById("auth-panel-signup");
-
-  tabLogin?.addEventListener("click", () => {
-    tabLogin.classList.add("is-active");
-    tabSignup?.classList.remove("is-active");
-    tabLogin.setAttribute("aria-selected", "true");
-    tabSignup?.setAttribute("aria-selected", "false");
-    if (panelLogin) panelLogin.hidden = false;
-    if (panelSignup) panelSignup.hidden = true;
-    setAuthMsg("");
-  });
-
-  tabSignup?.addEventListener("click", () => {
-    tabSignup?.classList.add("is-active");
-    tabLogin?.classList.remove("is-active");
-    tabSignup?.setAttribute("aria-selected", "true");
-    tabLogin?.setAttribute("aria-selected", "false");
-    if (panelLogin) panelLogin.hidden = true;
-    if (panelSignup) panelSignup.hidden = false;
-    setAuthMsg("");
-  });
+  const formLogin = document.getElementById("form-login");
 
   formLogin?.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const email = document.getElementById("auth-email-login")?.value?.trim() || "";
     const password = document.getElementById("auth-pass-login")?.value || "";
     setAuthMsg("");
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setAuthMsg(error.message, true);
-  });
-
-  formSignup?.addEventListener("submit", async (ev) => {
-    ev.preventDefault();
-    const email = document.getElementById("auth-email-signup")?.value?.trim() || "";
-    const password = document.getElementById("auth-pass-signup")?.value || "";
-    setAuthMsg("");
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}${window.location.pathname || "/"}`,
-      },
-    });
-    if (error) {
-      setAuthMsg(error.message, true);
-      return;
-    }
-    if (data.session) {
-      setAuthMsg("Conta criada. Você já está logado.");
-    } else {
-      setAuthMsg(
-        "Se o projeto exige confirmação por e-mail, abra o link enviado antes de entrar com a senha.",
-      );
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        console.error("signInWithPassword", error);
+        setAuthMsg(mapAuthError(error), true);
+        return;
+      }
+      if (!data?.session) {
+        setAuthMsg("Login não devolveu sessão. Confirme o e-mail da conta ou tente outro navegador.", true);
+      }
+    } catch (err) {
+      console.error("signInWithPassword", err);
+      setAuthMsg(mapAuthError(err), true);
     }
   });
 
@@ -1279,6 +1289,22 @@ async function init() {
   if (cfgErr) cfgErr.hidden = true;
 
   showAuthGate();
+
+  try {
+    const health = await fetch(`${supabaseUrl}/auth/v1/health`, { method: "GET" });
+    if (!health.ok) {
+      if (cfgErr) {
+        cfgErr.hidden = false;
+        cfgErr.textContent = `O Supabase respondeu HTTP ${health.status}. Confira VITE_SUPABASE_URL (Project URL) e a chave anon.`;
+      }
+    }
+  } catch {
+    if (cfgErr) {
+      cfgErr.hidden = false;
+      cfgErr.textContent = MSG_FETCH_FAIL;
+    }
+  }
+
   const { data } = await supabase.auth.getSession();
   await handleAuthEvent("INITIAL_CHECK", data.session);
 }
@@ -1779,4 +1805,11 @@ function wire() {
   wireCal();
 }
 
-void init();
+void init().catch((err) => {
+  console.error("init", err);
+  const cfg = document.getElementById("auth-config-error");
+  if (cfg) {
+    cfg.hidden = false;
+    cfg.textContent = "Erro ao iniciar o app. Abra o console (F12) para detalhes.";
+  }
+});

@@ -962,41 +962,6 @@ input[type="time"] {
   font-size: 0.9rem;
 }
 
-.auth-tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0;
-  padding: 4px;
-  margin-bottom: 0.75rem;
-  background: #e7e5e4;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
-
-.auth-tabs__btn {
-  margin: 0;
-  border: 0;
-  cursor: pointer;
-  font: inherit;
-  font-weight: 600;
-  font-size: 0.9rem;
-  padding: 0.55rem 0.65rem;
-  border-radius: calc(var(--radius) - 3px);
-  color: var(--muted);
-  background: transparent;
-  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.auth-tabs__btn:hover {
-  color: var(--text);
-}
-
-.auth-tabs__btn.is-active {
-  color: var(--text);
-  background: #fff;
-  box-shadow: 0 1px 3px rgb(28 25 23 / 8%);
-}
-
 .auth-msg--global {
   margin-bottom: 0.75rem;
 }

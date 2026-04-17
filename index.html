@@ -14,39 +14,12 @@
     <div id="auth-screen" class="auth-screen" hidden>
       <div class="auth-card card">
         <h1 class="auth-card__title">FD Investimentos</h1>
-        <p class="muted auth-card__lead">Salve PC, financeiro e calendário na nuvem. Escolha abaixo o que deseja fazer.</p>
+        <p class="muted auth-card__lead">Entre com a sua conta para sincronizar PC, financeiro e calendário na nuvem.</p>
         <p id="auth-config-error" class="auth-msg auth-msg--err" hidden></p>
-        <div class="auth-tabs" role="tablist" aria-label="Acesso à conta">
-          <button
-            type="button"
-            class="auth-tabs__btn is-active"
-            id="auth-tab-login"
-            role="tab"
-            aria-selected="true"
-            aria-controls="auth-panel-login"
-          >
-            Entrar
-          </button>
-          <button
-            type="button"
-            class="auth-tabs__btn"
-            id="auth-tab-signup"
-            role="tab"
-            aria-selected="false"
-            aria-controls="auth-panel-signup"
-          >
-            Criar conta
-          </button>
-        </div>
         <p id="auth-msg" class="auth-msg auth-msg--global" hidden></p>
-        <section
-          id="auth-panel-login"
-          class="auth-panel"
-          role="tabpanel"
-          aria-labelledby="auth-tab-login"
-        >
-          <h2 class="auth-panel__title">Entrar na conta</h2>
-          <p class="auth-panel__desc muted">Digite o e-mail e a senha que você já cadastrou.</p>
+        <section id="auth-panel-login" class="auth-panel auth-panel--solo" aria-label="Entrar">
+          <h2 class="auth-panel__title">Entrar</h2>
+          <p class="auth-panel__desc muted">Use o e-mail e a senha da sua conta (criada no painel Supabase ou por convite).</p>
           <form id="form-login" class="auth-form" autocomplete="on">
             <label class="field">
               <span>E-mail</span>
@@ -57,21 +30,6 @@
               <input id="auth-pass-login" name="password" type="password" required minlength="6" autocomplete="current-password" />
             </label>
             <button class="btn btn--primary auth-form__submit" id="btn-auth-login" type="submit">Entrar</button>
-          </form>
-        </section>
-        <section id="auth-panel-signup" class="auth-panel" role="tabpanel" aria-labelledby="auth-tab-signup" hidden>
-          <h2 class="auth-panel__title">Criar nova conta</h2>
-          <p class="auth-panel__desc muted">Você receberá um e-mail se o projeto exigir confirmação antes do primeiro acesso.</p>
-          <form id="form-signup" class="auth-form" autocomplete="on">
-            <label class="field">
-              <span>E-mail</span>
-              <input id="auth-email-signup" type="email" required autocomplete="username" />
-            </label>
-            <label class="field">
-              <span>Senha (mín. 6 caracteres)</span>
-              <input id="auth-pass-signup" type="password" required minlength="6" autocomplete="new-password" />
-            </label>
-            <button class="btn btn--primary auth-form__submit" id="btn-auth-signup" type="submit">Criar conta e continuar</button>
           </form>
         </section>
       </div>
