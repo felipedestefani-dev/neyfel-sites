@@ -11,7 +11,42 @@
   <body id="topo">
     <a class="skip-link" href="#conteudo-principal">Ir para o conteúdo</a>
 
-    <header class="topbar">
+    <div id="auth-screen" class="auth-screen" hidden>
+      <div class="auth-card card">
+        <h1 class="auth-card__title">FD Investimentos</h1>
+        <p class="muted auth-card__lead">Entre ou crie uma conta para salvar PC, financeiro e calendário na nuvem.</p>
+        <p id="auth-config-error" class="auth-msg auth-msg--err" hidden></p>
+        <p id="auth-msg" class="auth-msg" hidden></p>
+        <div class="auth-tabs" role="tablist" aria-label="Acesso">
+          <button type="button" class="tabs__btn is-active" id="auth-tab-login" role="tab" aria-selected="true">Entrar</button>
+          <button type="button" class="tabs__btn" id="auth-tab-signup" role="tab" aria-selected="false">Criar conta</button>
+        </div>
+        <form id="form-login" class="auth-form" autocomplete="on">
+          <label class="field">
+            <span>E-mail</span>
+            <input id="auth-email-login" name="email" type="email" required autocomplete="username" />
+          </label>
+          <label class="field">
+            <span>Senha</span>
+            <input id="auth-pass-login" name="password" type="password" required minlength="6" autocomplete="current-password" />
+          </label>
+          <button class="btn btn--primary auth-form__submit" id="btn-auth-login" type="submit">Entrar</button>
+        </form>
+        <form id="form-signup" class="auth-form" hidden autocomplete="on">
+          <label class="field">
+            <span>E-mail</span>
+            <input id="auth-email-signup" type="email" required autocomplete="username" />
+          </label>
+          <label class="field">
+            <span>Senha (mín. 6 caracteres)</span>
+            <input id="auth-pass-signup" type="password" required minlength="6" autocomplete="new-password" />
+          </label>
+          <button class="btn btn--primary auth-form__submit" id="btn-auth-signup" type="submit">Criar conta</button>
+        </form>
+      </div>
+    </div>
+
+    <header class="topbar" id="main-header">
       <div class="topbar__inner">
         <span class="topbar__brand-name">FD Investimentos</span>
         <nav class="tabs" role="tablist" aria-label="Seções">
@@ -25,6 +60,10 @@
             Calendário
           </button>
         </nav>
+        <div class="topbar__account" id="topbar-account" hidden>
+          <span class="topbar__email muted" id="auth-user-label"></span>
+          <button type="button" class="btn btn--ghost btn--small" id="btn-logout">Sair</button>
+        </div>
       </div>
     </header>
 
@@ -392,6 +431,6 @@
       </p>
     </footer>
 
-    <script src="app.js"></script>
+    <script type="module" src="/app.js"></script>
   </body>
 </html>

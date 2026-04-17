@@ -1,3 +1,5 @@
+import { createClient } from "@supabase/supabase-js";
+
 const STORAGE_KEY = "pc_agenda_v1";
 const PROXY_KEY = "pc_price_proxy";
 const LIVE_INTERVAL_KEY = "pc_live_interval_min";
@@ -5,6 +7,24 @@ const APP_TAB_KEY = "app_active_tab_v1";
 const FIN_STORAGE_KEY = "fin_ledger_v1";
 const CAL_STORAGE_KEY = "cal_events_v1";
 const CAL_VIEW_KEY = "cal_view_ym_v1";
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+const useSupabase = Boolean(supabaseUrl && supabaseAnonKey);
+
+/** @type {import("@supabase/supabase-js").SupabaseClient | null} */
+let supabase = null;
+if (useSupabase) {
+  supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+  });
+}
+
+/** @type {string | null} */
+let authedUserId = null;
+/** @type {ReturnType<typeof setTimeout> | null} */
+let cloudSaveTimer = null;
+const CLOUD_SAVE_MS = 700;
 
 const CAL_MONTHS_PT = [
   "Janeiro",
@@ -214,48 +234,53 @@ function updateMlHint() {
   el.textContent = `Mercado Livre: ${resolved} — dá para buscar preço pela API pública.`;
 }
 
+function parseEntriesArray(parsed) {
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter((x) => x && typeof x === "object")
+    .map((x) => {
+      const url = clampStr(x.url, 2000);
+      const mlFromField = normalizeMlItemId(x.mlItemId);
+      const mlFromUrl = extractMlItemIdFromUrl(url);
+      return {
+        id: String(x.id || uid()),
+        createdAt: String(x.createdAt || new Date().toISOString()),
+        updatedAt: String(x.updatedAt || new Date().toISOString()),
+        category: String(x.category || "outros"),
+        status: String(x.status || "pesquisa"),
+        name: clampStr(x.name, 140),
+        store: clampStr(x.store, 80),
+        price: Number.isFinite(Number(x.price)) ? Number(x.price) : 0,
+        url,
+        notes: clampStr(x.notes, 500),
+        mlItemId: mlFromField || mlFromUrl || "",
+        liveEnabled: x.liveEnabled === false ? false : true,
+        lastLiveAt: String(x.lastLiveAt || ""),
+        lastLiveError: clampStr(x.lastLiveError, 300),
+      };
+    });
+}
+
 function load() {
+  if (useSupabase) return;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
       entries = [];
       return;
     }
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      entries = [];
-      return;
-    }
-    entries = parsed
-      .filter((x) => x && typeof x === "object")
-      .map((x) => {
-        const url = clampStr(x.url, 2000);
-        const mlFromField = normalizeMlItemId(x.mlItemId);
-        const mlFromUrl = extractMlItemIdFromUrl(url);
-        return {
-          id: String(x.id || uid()),
-          createdAt: String(x.createdAt || new Date().toISOString()),
-          updatedAt: String(x.updatedAt || new Date().toISOString()),
-          category: String(x.category || "outros"),
-          status: String(x.status || "pesquisa"),
-          name: clampStr(x.name, 140),
-          store: clampStr(x.store, 80),
-          price: Number.isFinite(Number(x.price)) ? Number(x.price) : 0,
-          url,
-          notes: clampStr(x.notes, 500),
-          mlItemId: mlFromField || mlFromUrl || "",
-          liveEnabled: x.liveEnabled === false ? false : true,
-          lastLiveAt: String(x.lastLiveAt || ""),
-          lastLiveError: clampStr(x.lastLiveError, 300),
-        };
-      });
+    entries = parseEntriesArray(JSON.parse(raw));
   } catch {
     entries = [];
   }
 }
 
 function save() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+  if (!useSupabase) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+    return;
+  }
+  if (authedUserId) scheduleCloudSave();
 }
 
 function normalizeEntryDraft(draft) {
@@ -659,10 +684,18 @@ function startEdit(id) {
 }
 
 function clearAll() {
-  const ok = window.confirm("Limpar TODA a agenda? Isso apaga os dados salvos neste navegador.");
+  const msg =
+    useSupabase && authedUserId
+      ? "Limpar TODA a agenda? Isso apaga também os dados na nuvem para esta conta."
+      : "Limpar TODA a agenda? Isso apaga os dados salvos neste navegador.";
+  const ok = window.confirm(msg);
   if (!ok) return;
   entries = [];
-  localStorage.removeItem(STORAGE_KEY);
+  if (!useSupabase) {
+    localStorage.removeItem(STORAGE_KEY);
+  } else if (authedUserId) {
+    scheduleCloudSave();
+  }
   resetForm();
   toast("Agenda limpa.");
   renderList();
@@ -676,37 +709,42 @@ function setDefaultFinDate() {
   }
 }
 
+function parseFinArray(parsed) {
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter((x) => x && typeof x === "object")
+    .map((x) => ({
+      id: String(x.id || uid()),
+      createdAt: String(x.createdAt || new Date().toISOString()),
+      updatedAt: String(x.updatedAt || new Date().toISOString()),
+      type: FIN_TYPE_LABEL[x.type] ? String(x.type) : "gasto",
+      date: clampStr(x.date, 12) || new Date().toISOString().slice(0, 10),
+      description: clampStr(x.description, 160),
+      amount: Number.isFinite(Number(x.amount)) ? Math.max(0, Number(x.amount)) : 0,
+      notes: clampStr(x.notes, 400),
+    }));
+}
+
 function loadFin() {
+  if (useSupabase) return;
   try {
     const raw = localStorage.getItem(FIN_STORAGE_KEY);
     if (!raw) {
       finEntries = [];
       return;
     }
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      finEntries = [];
-      return;
-    }
-    finEntries = parsed
-      .filter((x) => x && typeof x === "object")
-      .map((x) => ({
-        id: String(x.id || uid()),
-        createdAt: String(x.createdAt || new Date().toISOString()),
-        updatedAt: String(x.updatedAt || new Date().toISOString()),
-        type: FIN_TYPE_LABEL[x.type] ? String(x.type) : "gasto",
-        date: clampStr(x.date, 12) || new Date().toISOString().slice(0, 10),
-        description: clampStr(x.description, 160),
-        amount: Number.isFinite(Number(x.amount)) ? Math.max(0, Number(x.amount)) : 0,
-        notes: clampStr(x.notes, 400),
-      }));
+    finEntries = parseFinArray(JSON.parse(raw));
   } catch {
     finEntries = [];
   }
 }
 
 function saveFin() {
-  localStorage.setItem(FIN_STORAGE_KEY, JSON.stringify(finEntries));
+  if (!useSupabase) {
+    localStorage.setItem(FIN_STORAGE_KEY, JSON.stringify(finEntries));
+    return;
+  }
+  if (authedUserId) scheduleCloudSave();
 }
 
 function normalizeFinDraft(draft) {
@@ -893,10 +931,18 @@ function startFinEdit(id) {
 }
 
 function clearFinAll() {
-  const ok = window.confirm("Limpar todos os lançamentos financeiros?");
+  const msg =
+    useSupabase && authedUserId
+      ? "Limpar todos os lançamentos financeiros? Isso reflete na nuvem."
+      : "Limpar todos os lançamentos financeiros?";
+  const ok = window.confirm(msg);
   if (!ok) return;
   finEntries = [];
-  localStorage.removeItem(FIN_STORAGE_KEY);
+  if (!useSupabase) {
+    localStorage.removeItem(FIN_STORAGE_KEY);
+  } else if (authedUserId) {
+    scheduleCloudSave();
+  }
   resetFinForm();
   toast("Financeiro limpo.");
   renderFinList();
@@ -918,39 +964,323 @@ function saveCalView() {
   localStorage.setItem(CAL_VIEW_KEY, `${calViewYear}-${pad2(calViewMonth + 1)}`);
 }
 
+function parseCalArray(parsed) {
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter((x) => x && typeof x === "object")
+    .map((x) => ({
+      id: String(x.id || uid()),
+      createdAt: String(x.createdAt || new Date().toISOString()),
+      updatedAt: String(x.updatedAt || new Date().toISOString()),
+      date: clampStr(x.date, 12),
+      title: clampStr(x.title, 160),
+      time: clampStr(x.time, 8),
+      notes: clampStr(x.notes, 400),
+    }))
+    .filter((e) => /^\d{4}-\d{2}-\d{2}$/.test(e.date));
+}
+
 function loadCal() {
   calSelected = toYmdLocal(new Date());
   loadCalViewFromStorage();
+  if (useSupabase) return;
   try {
     const raw = localStorage.getItem(CAL_STORAGE_KEY);
     if (!raw) {
       calEvents = [];
       return;
     }
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      calEvents = [];
-      return;
-    }
-    calEvents = parsed
-      .filter((x) => x && typeof x === "object")
-      .map((x) => ({
-        id: String(x.id || uid()),
-        createdAt: String(x.createdAt || new Date().toISOString()),
-        updatedAt: String(x.updatedAt || new Date().toISOString()),
-        date: clampStr(x.date, 12),
-        title: clampStr(x.title, 160),
-        time: clampStr(x.time, 8),
-        notes: clampStr(x.notes, 400),
-      }))
-      .filter((e) => /^\d{4}-\d{2}-\d{2}$/.test(e.date));
+    calEvents = parseCalArray(JSON.parse(raw));
   } catch {
     calEvents = [];
   }
 }
 
 function saveCal() {
-  localStorage.setItem(CAL_STORAGE_KEY, JSON.stringify(calEvents));
+  if (!useSupabase) {
+    localStorage.setItem(CAL_STORAGE_KEY, JSON.stringify(calEvents));
+    return;
+  }
+  if (authedUserId) scheduleCloudSave();
+}
+
+function scheduleCloudSave() {
+  if (!useSupabase || !authedUserId || !supabase) return;
+  window.clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = window.setTimeout(() => void flushCloudNow(), CLOUD_SAVE_MS);
+}
+
+async function flushCloudNow() {
+  if (!useSupabase || !supabase || !authedUserId) return;
+  const { error } = await supabase.from("user_data").upsert(
+    {
+      user_id: authedUserId,
+      pc_entries: entries,
+      fin_entries: finEntries,
+      cal_events: calEvents,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id" },
+  );
+  if (error) {
+    console.error(error);
+    toast("Erro ao salvar na nuvem.");
+  }
+}
+
+function tryMigrateLocalStorageToState() {
+  let touched = false;
+  try {
+    if (entries.length === 0) {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const next = parseEntriesArray(JSON.parse(raw));
+        if (next.length) {
+          entries = next;
+          touched = true;
+        }
+      }
+    }
+    if (finEntries.length === 0) {
+      const raw = localStorage.getItem(FIN_STORAGE_KEY);
+      if (raw) {
+        const next = parseFinArray(JSON.parse(raw));
+        if (next.length) {
+          finEntries = next;
+          touched = true;
+        }
+      }
+    }
+    if (calEvents.length === 0) {
+      const raw = localStorage.getItem(CAL_STORAGE_KEY);
+      if (raw) {
+        const next = parseCalArray(JSON.parse(raw));
+        if (next.length) {
+          calEvents = next;
+          touched = true;
+        }
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return touched;
+}
+
+async function hydrateFromCloud() {
+  if (!supabase) return;
+  const { data: udata, error: uerr } = await supabase.auth.getUser();
+  if (uerr || !udata.user) return;
+
+  const { data, error } = await supabase
+    .from("user_data")
+    .select("pc_entries, fin_entries, cal_events")
+    .eq("user_id", udata.user.id)
+    .maybeSingle();
+
+  if (error) {
+    console.error(error);
+    toast("Não foi possível carregar os dados na nuvem.");
+    return;
+  }
+
+  const countLen = (v) => (Array.isArray(v) ? v.length : 0);
+  const cloudPc = data?.pc_entries;
+  const cloudFin = data?.fin_entries;
+  const cloudCal = data?.cal_events;
+  const cloudEmpty = countLen(cloudPc) + countLen(cloudFin) + countLen(cloudCal) === 0;
+
+  if (data && !cloudEmpty) {
+    entries = parseEntriesArray(cloudPc);
+    finEntries = parseFinArray(cloudFin);
+    calEvents = parseCalArray(cloudCal);
+  } else {
+    entries = [];
+    finEntries = [];
+    calEvents = [];
+    const migrated = tryMigrateLocalStorageToState();
+    await flushCloudNow();
+    if (migrated) {
+      toast("Dados salvos neste navegador foram enviados para a nuvem.");
+    }
+  }
+
+  calSelected = toYmdLocal(new Date());
+  loadCalViewFromStorage();
+  applyRouteFromHash();
+  updateMlHint();
+  renderList();
+  renderFinList();
+  renderCalendarUi();
+}
+
+/** @type {string | null} */
+let lastHydratedUserId = null;
+
+function setAuthMsg(text, isErr = false) {
+  const el = document.getElementById("auth-msg");
+  if (!el) return;
+  el.hidden = !text;
+  el.textContent = text;
+  el.classList.toggle("auth-msg--err", Boolean(text && isErr));
+}
+
+function showAuthGate() {
+  lastHydratedUserId = null;
+  document.body.classList.add("is-authing");
+  const screen = document.getElementById("auth-screen");
+  const header = document.getElementById("main-header");
+  const main = document.getElementById("conteudo-principal");
+  const foot = document.querySelector(".site-footer");
+  const acc = document.getElementById("topbar-account");
+  if (screen) screen.hidden = false;
+  if (header) header.hidden = true;
+  if (main) main.hidden = true;
+  if (foot) foot.hidden = true;
+  if (acc) acc.hidden = true;
+}
+
+async function showAppAfterAuth(user) {
+  document.body.classList.remove("is-authing");
+  const screen = document.getElementById("auth-screen");
+  const header = document.getElementById("main-header");
+  const main = document.getElementById("conteudo-principal");
+  const foot = document.querySelector(".site-footer");
+  const acc = document.getElementById("topbar-account");
+  const label = document.getElementById("auth-user-label");
+  if (screen) screen.hidden = true;
+  if (header) header.hidden = false;
+  if (main) main.hidden = false;
+  if (foot) foot.hidden = false;
+  if (acc) acc.hidden = false;
+  if (label) label.textContent = user.email || "";
+
+  authedUserId = user.id;
+
+  const needHydrate = lastHydratedUserId !== user.id;
+  if (needHydrate) {
+    lastHydratedUserId = user.id;
+    await hydrateFromCloud();
+  }
+  loadLivePrefsUi();
+  restartLiveTimer();
+}
+
+async function handleAuthEvent(_event, session) {
+  if (!session?.user) {
+    authedUserId = null;
+    entries = [];
+    finEntries = [];
+    calEvents = [];
+    showAuthGate();
+    renderList();
+    renderFinList();
+    renderCalendarUi();
+    return;
+  }
+  await showAppAfterAuth(session.user);
+}
+
+function wireAuth() {
+  if (!useSupabase || !supabase) return;
+
+  const tabLogin = document.getElementById("auth-tab-login");
+  const tabSignup = document.getElementById("auth-tab-signup");
+  const formLogin = document.getElementById("form-login");
+  const formSignup = document.getElementById("form-signup");
+
+  tabLogin?.addEventListener("click", () => {
+    tabLogin.classList.add("is-active");
+    tabSignup?.classList.remove("is-active");
+    tabLogin.setAttribute("aria-selected", "true");
+    tabSignup?.setAttribute("aria-selected", "false");
+    if (formLogin) formLogin.hidden = false;
+    if (formSignup) formSignup.hidden = true;
+    setAuthMsg("");
+  });
+
+  tabSignup?.addEventListener("click", () => {
+    tabSignup?.classList.add("is-active");
+    tabLogin?.classList.remove("is-active");
+    tabSignup?.setAttribute("aria-selected", "true");
+    tabLogin?.setAttribute("aria-selected", "false");
+    if (formLogin) formLogin.hidden = true;
+    if (formSignup) formSignup.hidden = false;
+    setAuthMsg("");
+  });
+
+  formLogin?.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const email = document.getElementById("auth-email-login")?.value?.trim() || "";
+    const password = document.getElementById("auth-pass-login")?.value || "";
+    setAuthMsg("");
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) setAuthMsg(error.message, true);
+  });
+
+  formSignup?.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const email = document.getElementById("auth-email-signup")?.value?.trim() || "";
+    const password = document.getElementById("auth-pass-signup")?.value || "";
+    setAuthMsg("");
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}${window.location.pathname || "/"}`,
+      },
+    });
+    if (error) {
+      setAuthMsg(error.message, true);
+      return;
+    }
+    if (data.session) {
+      setAuthMsg("Conta criada. Você já está logado.");
+    } else {
+      setAuthMsg(
+        "Se o projeto exige confirmação por e-mail, abra o link enviado antes de entrar com a senha.",
+      );
+    }
+  });
+
+  document.getElementById("btn-logout")?.addEventListener("click", async () => {
+    window.clearTimeout(cloudSaveTimer);
+    cloudSaveTimer = null;
+    await flushCloudNow();
+    await supabase.auth.signOut();
+  });
+
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (event === "INITIAL_SESSION") return;
+    void handleAuthEvent(event, session);
+  });
+}
+
+async function init() {
+  wire();
+  wireAuth();
+
+  if (!useSupabase) {
+    const authScr = document.getElementById("auth-screen");
+    if (authScr) authScr.hidden = true;
+    load();
+    loadFin();
+    loadCal();
+    applyRouteFromHash();
+    updateMlHint();
+    renderList();
+    renderFinList();
+    loadLivePrefsUi();
+    restartLiveTimer();
+    return;
+  }
+
+  const cfgErr = document.getElementById("auth-config-error");
+  if (cfgErr) cfgErr.hidden = true;
+
+  showAuthGate();
+  const { data } = await supabase.auth.getSession();
+  await handleAuthEvent("INITIAL_CHECK", data.session);
 }
 
 function normalizeCalDraft(draft) {
@@ -1204,10 +1534,18 @@ function startCalEdit(id) {
 }
 
 function clearCalAll() {
-  const ok = window.confirm("Limpar todos os eventos do calendário?");
+  const msg =
+    useSupabase && authedUserId
+      ? "Limpar todos os eventos do calendário? Isso reflete na nuvem."
+      : "Limpar todos os eventos do calendário?";
+  const ok = window.confirm(msg);
   if (!ok) return;
   calEvents = [];
-  localStorage.removeItem(CAL_STORAGE_KEY);
+  if (!useSupabase) {
+    localStorage.removeItem(CAL_STORAGE_KEY);
+  } else if (authedUserId) {
+    scheduleCloudSave();
+  }
   resetCalForm();
   toast("Calendário limpo.");
   renderCalendarUi();
@@ -1441,11 +1779,4 @@ function wire() {
   wireCal();
 }
 
-load();
-loadFin();
-loadCal();
-wire();
-applyRouteFromHash();
-updateMlHint();
-renderList();
-renderFinList();
+void init();

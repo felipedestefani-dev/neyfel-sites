@@ -933,3 +933,82 @@ input[type="time"] {
     flex-wrap: wrap;
   }
 }
+
+/* Auth + conta (Supabase) */
+.auth-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem 1rem;
+  background: linear-gradient(160deg, #fffbeb 0%, #ffedd5 45%, #fed7aa 100%);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 1.5rem 1.25rem;
+}
+
+.auth-card__title {
+  font-size: 1.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.auth-card__lead {
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.auth-tabs {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+
+.auth-tabs .tabs__btn {
+  flex: 1;
+  justify-content: center;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.auth-form__submit {
+  margin-top: 0.25rem;
+}
+
+.auth-msg {
+  font-size: 0.875rem;
+  margin-bottom: 0.75rem;
+  color: var(--muted);
+}
+
+.auth-msg--err {
+  color: var(--red);
+}
+
+.topbar__account {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.topbar__email {
+  font-size: 0.8rem;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn--small {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8125rem;
+}
